@@ -1,19 +1,18 @@
 [package]
 name = "windows_trash_manager"
-version = "0.1.0"
-license = "Apache-2.0"
+version = "0.1.1"
 authors = ["Julien Wetzel <julien.wetzel@gmail.com>"]
 description = "Manage Recycle Bin on Windows"
-github = "https://github.com/julienwetzel/windows-trash-manager.git"
 categories = ["gui, windows"]
 keywords = ["gui", "ui", "windows"]
 edition = "2021"
 rust-version = "1.67.1"
 
+license = "Apache-2.0"
+repository = "https://github.com/julienwetzel/windows-trash-manager"
+
 [dependencies]
-# Custom
-trash = "3.0.1"
-chrono = "0.4"
+# UI
 dark-light = "1.0"
 egui = "0.21.0"
 eframe = { version = "0.21.0", default-features = false, features = [
@@ -23,10 +22,20 @@ eframe = { version = "0.21.0", default-features = false, features = [
     "persistence",   # Enable restoring app state when restarting the app.
     "dark-light",    # Detect dark mode system preference using dark-light
 ] }
-tracing-subscriber = "0.3"
-
 # serde only if persistence:
 serde = { version = "1", features = ["derive"] }
+
+# Logging
+tracing-subscriber = "0.3"
+
+# Other
+trash = "3.0.1"
+chrono = "0.4"
+
+[build-dependencies]
+winresource = "0.1.15"
+
+
 
 [profile.release]
 opt-level = 2 # fast and small wasm

@@ -1,8 +1,7 @@
+use crate::NOTICE;
 use chrono::offset::Local;
 use chrono::{Duration, NaiveDateTime, TimeZone};
 use trash::os_limited::{list, purge_all};
-
-use crate::NOTICE;
 
 // We derive Deserialize/Serialize so we can persist app state on shutdown.
 // if we add new fields, give them default values when deserializing old state

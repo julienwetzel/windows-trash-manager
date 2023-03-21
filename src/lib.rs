@@ -3,7 +3,6 @@
 mod app;
 pub use app::TemplateApp;
 
-pub const LOREM_IPSUM: &str = "Lorem ipsum dolor sit amet";
 pub const NOTICE: &str =
     "    /\\_/\\  (\n   ( ^.^ ) _)\n      \\\"/  (\n   (  |  |  ) \n(__d b__)\n\n\
 📖 NOTICE D'UTILISATION 📖\n\n\
