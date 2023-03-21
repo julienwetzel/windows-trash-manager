@@ -3,18 +3,18 @@ name = "windows_trash_manager"
 version = "0.1.1"
 authors = ["Julien Wetzel <julien.wetzel@gmail.com>"]
 description = "Manage Recycle Bin on Windows"
+
 categories = ["gui, windows"]
 keywords = ["gui", "ui", "windows"]
 edition = "2021"
-rust-version = "1.67.1"
+rust-version = "1.68.0"
 
 license = "Apache-2.0"
 repository = "https://github.com/julienwetzel/windows-trash-manager"
 
 [dependencies]
 # UI
-dark-light = "1.0"
-egui = "0.21.0"
+egui = "0.21.0"      # Gui Framwork
 eframe = { version = "0.21.0", default-features = false, features = [
     "accesskit",     # Make egui comptaible with screen readers. NOTE: adds a lot of dependencies.
     "default_fonts", # Embed the default egui fonts.
@@ -22,20 +22,19 @@ eframe = { version = "0.21.0", default-features = false, features = [
     "persistence",   # Enable restoring app state when restarting the app.
     "dark-light",    # Detect dark mode system preference using dark-light
 ] }
-# serde only if persistence:
-serde = { version = "1", features = ["derive"] }
+dark-light = "1.0"   # Change light and dark theme easly
+chrono = "0.4"       # Print to human date and time
+image = "0.24.5"     # For manipulate images
 
 # Logging
 tracing-subscriber = "0.3"
 
 # Other
-trash = "3.0.1"
-chrono = "0.4"
+serde = { version = "1", features = ["derive"] } # For persistence
+trash = "3.0.1" # For manage windows Recycle Bin
 
 [build-dependencies]
 winresource = "0.1.15"
-
-
 
 [profile.release]
 opt-level = 2 # fast and small wasm
