@@ -1,40 +1,90 @@
-use crate::NOTICE;
-use chrono::offset::Local;
-use chrono::{Duration, NaiveDateTime, TimeZone};
+use crate::{CircularBuffer, GitHubInfo, NOTICE};
+use chrono::{offset::Local, Duration, NaiveDateTime, TimeZone};
+use serde::{Deserialize, Serialize};
 use trash::os_limited::{list, purge_all};
 
-#[derive(serde::Deserialize, serde::Serialize)]
-#[serde(default)]
-pub struct AppConfig {
-    time_threshold: i64,
-}
+const MAX_CONSOLE_LINES: usize = 1000;
 
-impl AppConfig {}
-
-impl Default for AppConfig {
-    fn default() -> Self {
-        Self { time_threshold: 15 }
+impl Serialize for CircularBuffer<String> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let data = self.iter().collect::<Vec<&String>>();
+        data.serialize(serializer)
     }
 }
 
-#[derive(serde::Deserialize, serde::Serialize)]
-#[serde(default)]
+impl<'de> Deserialize<'de> for CircularBuffer<String> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let data = Vec::<String>::deserialize(deserializer)?;
+        let mut buffer = CircularBuffer::new(data.len());
+        for item in data {
+            buffer.push(item);
+        }
+        Ok(buffer)
+    }
+}
+
+pub struct ConfigApp {
+    time_threshold: i64,
+    max_console_lines: u16,
+}
+
+impl ConfigApp {}
+
+impl Default for ConfigApp {
+    fn default() -> Self {
+        Self {
+            time_threshold: 15,
+            max_console_lines: 1000,
+        }
+    }
+}
+
+//#[derive(serde::Deserialize, serde::Serialize)]
+//#[serde(default)]
 pub struct ConsoleApp {
-    console_txt: String,
-    app_config: AppConfig,
+    //#[serde(skip)]
+    console_queue: CircularBuffer<String>,
 }
 
 impl ConsoleApp {
-    pub fn add_text(&mut self, text: &str) {
-        self.console_txt.push_str(text);
+    pub fn get_last_console_messages(&self, count: usize) -> Vec<String> {
+        if self.console_queue.is_empty() {
+            return Vec::new();
+        }
+
+        let messages = self.console_queue.iter().collect::<Vec<&String>>();
+        messages.into_iter().take(count).cloned().collect()
+    }
+
+    pub fn add_to_buffer(&mut self, text: &str) {
+        if text.is_empty() {
+            return;
+        }
+
+        for line in text.lines() {
+            self.console_queue.push(line.to_string());
+        }
+    }
+
+    pub fn flush_storage(&mut self) {
+        if self.console_queue.is_empty() {
+            return;
+        }
+
+        self.console_queue.clear();
     }
 }
 
 impl Default for ConsoleApp {
     fn default() -> Self {
         Self {
-            console_txt: NOTICE.to_owned(),
-            app_config: AppConfig { time_threshold: 30 },
+            console_queue: CircularBuffer::new(ConfigApp::default().max_console_lines.into()),
         }
     }
 }
@@ -44,13 +94,17 @@ impl Default for ConsoleApp {
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)]
 pub struct TemplateApp {
+    #[serde(skip)]
     console_app: ConsoleApp,
+    #[serde(skip)]
+    config_app: ConfigApp,
 }
 
 impl Default for TemplateApp {
     fn default() -> Self {
         Self {
             console_app: ConsoleApp::default(),
+            config_app: ConfigApp::default(),
         }
     }
 }
@@ -58,13 +112,10 @@ impl Default for TemplateApp {
 //################################# UI AREA ###################################
 
 impl TemplateApp {
-    /// Called once before the first frame.
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        // This is also where you can customize the look and feel of egui using
         // `cc.egui_ctx.set_visuals` and `cc.egui_ctx.set_fonts`.
 
         // Load previous app state (if any).
-        // Note that you must enable the `persistence` feature for this to work.
         if let Some(storage) = cc.storage {
             return eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default();
         }
@@ -75,14 +126,12 @@ impl TemplateApp {
 //############################# UI PANEL AREA #################################
 
 impl eframe::App for TemplateApp {
-    // Called by the frame work to save state before shutdown.
-    fn save(&mut self, storage: &mut dyn eframe::Storage) {
-        eframe::set_value(storage, eframe::APP_KEY, self);
-    }
-
     /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        //let Self { console_txt } = self;
+        let Self {
+            console_app,
+            config_app,
+        } = self;
         //___________________________ TOPBOTTOMPANEL __________________________
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             egui::menu::bar(ui, |ui| {
@@ -111,11 +160,22 @@ impl eframe::App for TemplateApp {
                     egui::Layout::top_down_justified(egui::Align::Center),
                     |ui| {
                         ui.add(
-                            egui::DragValue::new(&mut self.console_app.app_config.time_threshold)
+                            egui::DragValue::new(&mut config_app.time_threshold)
                                 .speed(0.1)
                                 .suffix(" jours")
-                                .clamp_range(1.0..=365.0),
+                                .clamp_range(1.0..=255.0),
                         );
+                    },
+                );
+
+                // *** FLUSH CONSOLE QUEUE BUTTON ***
+                ui.add_space(8.0);
+                ui.with_layout(
+                    egui::Layout::top_down_justified(egui::Align::Center),
+                    |ui| {
+                        if ui.button("Vider la console").clicked() {
+                            console_app.flush_storage();
+                        }
                     },
                 );
 
@@ -128,7 +188,7 @@ impl eframe::App for TemplateApp {
                     egui::Layout::top_down_justified(egui::Align::Center),
                     |ui| {
                         if ui.button("Analyser").clicked() {
-                            analyser(&mut self.console_app);
+                            analyser(console_app, config_app);
                         }
                     },
                 );
@@ -141,45 +201,62 @@ impl eframe::App for TemplateApp {
                     |ui| {
                         let button_response = ui.button(btn_label);
                         if button_response.clicked() {
-                            supprimer_definitivement(&mut self.console_app);
+                            supprimer_definitivement(console_app, config_app);
                         }
                     },
                 );
 
+                ui.horizontal(|ui| {
+                    ui.label("Write something: ");
+                });
+
                 ui.with_layout(egui::Layout::bottom_up(egui::Align::Center), |ui| {
                     egui::widgets::global_dark_light_mode_buttons(ui);
                     ui.separator();
+                    ui.horizontal(|ui| {
+                        ui.add(egui::Hyperlink::from_label_and_url(
+                            "GitHub",
+                            GitHubInfo::default().url,
+                        ));
+                        ui.label(egui::special_emojis::GITHUB.to_string());
+                        ui.add(egui::github_link_file!(
+                            GitHubInfo::default().url_blob,
+                            "Code source"
+                        ));
+                    });
                 });
-                ui.separator();
-                ui.hyperlink("https://github.com/julienwetzel/windows-trash-manager");
-                ui.add(egui::github_link_file!(
-                    "https://github.com/julienwetzel/windows-trash-manager/blob/main/src/app.rs",
-                    "Code source"
-                ));
             });
 
         //____________________________CENTRALPANEL_____________________________
         egui::CentralPanel::default().show(ctx, |ui| {
             egui::ScrollArea::vertical()
-                .stick_to_bottom(true) // Ajoutez cette ligne pour coller le scroll en bas
+                .stick_to_bottom(true)
                 .show(ui, |ui| {
-                    let mut text: &str = &self.console_app.console_txt;
+                    let lines = self
+                        .console_app
+                        .get_last_console_messages(MAX_CONSOLE_LINES);
+                    let mut text = lines.join("\n");
                     ui.add_sized(ui.available_size(), egui::TextEdit::multiline(&mut text));
                 });
         });
+    }
+
+    // Called by the frame work to save state before shutdown.
+    fn save(&mut self, storage: &mut dyn eframe::Storage) {
+        eframe::set_value(storage, eframe::APP_KEY, self);
     }
 }
 
 //########################### BUTTONS FUNCTIONS AREA ##########################
 
 //___________________FUNCTION BUTTON SUPPRIMER_DEFINITIVEMENT__________________
-fn supprimer_definitivement(console_app: &mut ConsoleApp) {
+fn supprimer_definitivement(console_app: &mut ConsoleApp, config_app: &mut ConfigApp) {
     let now = Local::now().naive_local();
-    let threshold = Duration::days(console_app.app_config.time_threshold);
+    let threshold = Duration::days(config_app.time_threshold);
     let trash_items = match list() {
         Ok(items) => items,
         Err(e) => {
-            console_app.add_text(&format!(
+            console_app.add_to_buffer(&format!(
                 "**** Erreur lors de la récupération des éléments de la corbeille: {} ****\n",
                 e
             ));
@@ -187,13 +264,14 @@ fn supprimer_definitivement(console_app: &mut ConsoleApp) {
         }
     };
 
-    console_app.add_text("SUPPRESSION DÉFINITIVE\n\n");
+    console_app.add_to_buffer("SUPPRESSION DÉFINITIVE\n\n");
 
     for item in &trash_items {
         let time_deleted = match NaiveDateTime::from_timestamp_opt(item.time_deleted, 0) {
             Some(time) => time,
             None => {
-                console_app.add_text("**** Erreur lors de la conversion de l'horodatage ****\n");
+                console_app
+                    .add_to_buffer("**** Erreur lors de la conversion de l'horodatage ****\n");
                 continue;
             }
         };
@@ -206,7 +284,7 @@ fn supprimer_definitivement(console_app: &mut ConsoleApp) {
                 Supprimé le : {}\n\n",
                 item.name, formatted_time_deleted
             );
-            console_app.add_text(&message);
+            console_app.add_to_buffer(&message);
         }
     }
 
@@ -214,25 +292,26 @@ fn supprimer_definitivement(console_app: &mut ConsoleApp) {
         let time_deleted = match NaiveDateTime::from_timestamp_opt(item.time_deleted, 0) {
             Some(time) => time,
             None => {
-                console_app.add_text("**** Erreur lors de la conversion de l'horodatage ****\n");
+                console_app
+                    .add_to_buffer("**** Erreur lors de la conversion de l'horodatage ****\n");
                 return false;
             }
         };
         let time_deleted_local = Local.from_utc_datetime(&time_deleted);
         now.signed_duration_since(time_deleted_local.naive_local()) > threshold
     })) {
-        console_app.add_text(&format!("**** Erreur lors de la purge: {} ****\n", e));
+        console_app.add_to_buffer(&format!("**** Erreur lors de la purge: {} ****\n", e));
     }
 }
 
 //__________________________FUNCTION BUTTON ANALYSER___________________________
-fn analyser(console_app: &mut ConsoleApp) {
+fn analyser(console_app: &mut ConsoleApp, config_app: &mut ConfigApp) {
     let now = Local::now().naive_local();
-    let threshold = Duration::days(console_app.app_config.time_threshold);
+    let threshold = Duration::days(config_app.time_threshold);
     let trash_items = match list() {
         Ok(items) => items,
         Err(e) => {
-            console_app.add_text(&format!(
+            console_app.add_to_buffer(&format!(
                 "**** Erreur lors de la récupération des éléments de la corbeille: {} ****\n",
                 e
             ));
@@ -242,15 +321,16 @@ fn analyser(console_app: &mut ConsoleApp) {
 
     let title = format!(
         "LISTE DES ELEMENTS SUPPRIMÉS IL Y A PLUS DE {} JOURS\n\n",
-        console_app.app_config.time_threshold
+        config_app.time_threshold
     );
-    console_app.add_text(&title);
+    console_app.add_to_buffer(&title);
 
     for item in &trash_items {
         let time_deleted = match NaiveDateTime::from_timestamp_opt(item.time_deleted, 0) {
             Some(time) => time,
             None => {
-                console_app.add_text("**** Erreur lors de la conversion de l'horodatage ****\n");
+                console_app
+                    .add_to_buffer("**** Erreur lors de la conversion de l'horodatage ****\n");
                 continue;
             }
         };
@@ -263,7 +343,7 @@ fn analyser(console_app: &mut ConsoleApp) {
                 Supprimé le : {}\n\n",
                 item.name, formatted_time_deleted
             );
-            console_app.add_text(&message);
+            console_app.add_to_buffer(&message);
         }
     }
 }
