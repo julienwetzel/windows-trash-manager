@@ -51,7 +51,6 @@ impl Default for ConfigApp {
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)]
 pub struct ConsoleApp {
-    //config_app: ConfigApp,
     console_queue: CircularBuffer<String>,
 }
 
@@ -87,11 +86,6 @@ impl ConsoleApp {
 impl Default for ConsoleApp {
     fn default() -> Self {
         Self {
-            /*config_app: ConfigApp {
-                time_threshold: 30,
-                max_console_lines: 1000,
-            },*/
-            //console_queue: CircularBuffer::new(ConfigApp::default().),
             console_queue: CircularBuffer::new(ConfigApp::default().max_console_lines.into()),
         }
     }
@@ -101,20 +95,11 @@ impl Default for ConsoleApp {
 We derive Deserialize/Serialize so we can persist app state on shutdown.
 if we add new fields, give them default values when deserializing old state
 */
-#[derive(serde::Deserialize, serde::Serialize)]
+#[derive(serde::Deserialize, serde::Serialize, Default)]
 #[serde(default)]
 pub struct TemplateApp {
     config_app: ConfigApp,
     console_app: ConsoleApp,
-}
-
-impl Default for TemplateApp {
-    fn default() -> Self {
-        Self {
-            console_app: ConsoleApp::default(),
-            config_app: ConfigApp::default(),
-        }
-    }
 }
 
 //################################# UI AREA ###################################
@@ -124,11 +109,15 @@ impl TemplateApp {
         // `cc.egui_ctx.set_visuals` and `cc.egui_ctx.set_fonts`.
 
         // Load previous app state (if any).
-        if let Some(storage) = cc.storage {
-            return eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default();
-        }
+        let mut template_app: TemplateApp = if let Some(storage) = cc.storage {
+            eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default()
+        } else {
+            Default::default()
+        };
 
-        Default::default()
+        // Ajoutez le contenu de NOTICE au buffer ici
+        template_app.console_app.add_to_buffer(NOTICE);
+        template_app
     }
 }
 
@@ -196,8 +185,7 @@ impl eframe::App for TemplateApp {
                             if let Some(storage) = frame.storage_mut() {
                                 // Effacer la persistance enregistrée
                                 clear_cache(storage);
-                                return eframe::get_value(storage, eframe::APP_KEY)
-                                    .unwrap_or_default();
+                                eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default()
                             }
                         }
                     },
