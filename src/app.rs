@@ -1,9 +1,9 @@
 use crate::{CircularBuffer, GitHubInfo, NOTICE};
 use chrono::{offset::Local, Duration, NaiveDateTime, TimeZone};
+//use eframe::{egui_glow::painter::clear, Storage};
+//use egui::Memory;
 use serde::{Deserialize, Serialize};
 use trash::os_limited::{list, purge_all};
-
-const MAX_CONSOLE_LINES: usize = 1000;
 
 impl Serialize for CircularBuffer<String> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -21,16 +21,23 @@ impl<'de> Deserialize<'de> for CircularBuffer<String> {
         D: serde::Deserializer<'de>,
     {
         let data = Vec::<String>::deserialize(deserializer)?;
-        let mut buffer = CircularBuffer::new(data.len());
-        for item in data {
-            buffer.push(item);
+        let mut buffer;
+        if data.len() > 0 {
+            buffer = CircularBuffer::new(data.len());
+            for item in data {
+                buffer.push(item);
+            }
+        } else {
+            buffer = CircularBuffer::new(1);
         }
         Ok(buffer)
     }
 }
 
+#[derive(serde::Deserialize, serde::Serialize)]
+#[serde(default)]
 pub struct ConfigApp {
-    time_threshold: i64,
+    time_threshold: u8,
     max_console_lines: u16,
 }
 
@@ -39,16 +46,16 @@ impl ConfigApp {}
 impl Default for ConfigApp {
     fn default() -> Self {
         Self {
-            time_threshold: 15,
-            max_console_lines: 1000,
+            time_threshold: 30,
+            max_console_lines: 344,
         }
     }
 }
 
-//#[derive(serde::Deserialize, serde::Serialize)]
-//#[serde(default)]
+#[derive(serde::Deserialize, serde::Serialize)]
+#[serde(default)]
 pub struct ConsoleApp {
-    //#[serde(skip)]
+    //config_app: ConfigApp,
     console_queue: CircularBuffer<String>,
 }
 
@@ -84,20 +91,25 @@ impl ConsoleApp {
 impl Default for ConsoleApp {
     fn default() -> Self {
         Self {
+            /*config_app: ConfigApp {
+                time_threshold: 30,
+                max_console_lines: 1000,
+            },*/
+            //console_queue: CircularBuffer::new(ConfigApp::default().),
             console_queue: CircularBuffer::new(ConfigApp::default().max_console_lines.into()),
         }
     }
 }
 
-// We derive Deserialize/Serialize so we can persist app state on shutdown.
-// if we add new fields, give them default values when deserializing old state
+/*
+We derive Deserialize/Serialize so we can persist app state on shutdown.
+if we add new fields, give them default values when deserializing old state
+*/
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)]
 pub struct TemplateApp {
-    #[serde(skip)]
-    console_app: ConsoleApp,
-    #[serde(skip)]
     config_app: ConfigApp,
+    console_app: ConsoleApp,
 }
 
 impl Default for TemplateApp {
@@ -123,11 +135,12 @@ impl TemplateApp {
         Default::default()
     }
 }
+
 //############################# UI PANEL AREA #################################
 
 impl eframe::App for TemplateApp {
     /// Called each time the UI needs repainting, which may be many times per second.
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         let Self {
             console_app,
             config_app,
@@ -137,7 +150,7 @@ impl eframe::App for TemplateApp {
             egui::menu::bar(ui, |ui| {
                 ui.menu_button("File", |ui| {
                     if ui.button("Quit").clicked() {
-                        _frame.close();
+                        frame.close();
                     }
                 });
             });
@@ -168,13 +181,28 @@ impl eframe::App for TemplateApp {
                     },
                 );
 
-                // *** FLUSH CONSOLE QUEUE BUTTON ***
+                // *** CLEAR CONSOLE QUEUE BUTTON ***
                 ui.add_space(8.0);
                 ui.with_layout(
                     egui::Layout::top_down_justified(egui::Align::Center),
                     |ui| {
                         if ui.button("Vider la console").clicked() {
                             console_app.flush_storage();
+                        }
+                    },
+                );
+                // *** CLEAR MEMORY BUTTON ***
+                ui.add_space(8.0);
+                ui.with_layout(
+                    egui::Layout::top_down_justified(egui::Align::Center),
+                    |ui| {
+                        if ui.button("Vider le frame").clicked() {
+                            if let Some(storage) = frame.storage_mut() {
+                                // Effacer la persistance enregistrée
+                                clear_cache(storage);
+                                return eframe::get_value(storage, eframe::APP_KEY)
+                                    .unwrap_or_default();
+                            }
                         }
                     },
                 );
@@ -232,9 +260,8 @@ impl eframe::App for TemplateApp {
             egui::ScrollArea::vertical()
                 .stick_to_bottom(true)
                 .show(ui, |ui| {
-                    let lines = self
-                        .console_app
-                        .get_last_console_messages(MAX_CONSOLE_LINES);
+                    let lines = self.console_app.get_last_console_messages(1000);
+                    //.get_last_console_messages(config_app.max_console_lines.into());
                     let mut text = lines.join("\n");
                     ui.add_sized(ui.available_size(), egui::TextEdit::multiline(&mut text));
                 });
@@ -249,10 +276,16 @@ impl eframe::App for TemplateApp {
 
 //########################### BUTTONS FUNCTIONS AREA ##########################
 
+pub fn clear_cache(storage: &mut dyn eframe::Storage) {
+    let none_ref: &Option<()> = &None;
+    eframe::set_value(storage, eframe::APP_KEY, none_ref);
+}
+
 //___________________FUNCTION BUTTON SUPPRIMER_DEFINITIVEMENT__________________
 fn supprimer_definitivement(console_app: &mut ConsoleApp, config_app: &mut ConfigApp) {
     let now = Local::now().naive_local();
-    let threshold = Duration::days(config_app.time_threshold);
+    let duration = config_app.time_threshold as i64;
+    let threshold = Duration::days(duration);
     let trash_items = match list() {
         Ok(items) => items,
         Err(e) => {
@@ -307,7 +340,8 @@ fn supprimer_definitivement(console_app: &mut ConsoleApp, config_app: &mut Confi
 //__________________________FUNCTION BUTTON ANALYSER___________________________
 fn analyser(console_app: &mut ConsoleApp, config_app: &mut ConfigApp) {
     let now = Local::now().naive_local();
-    let threshold = Duration::days(config_app.time_threshold);
+    let duration = config_app.time_threshold as i64;
+    let threshold = Duration::days(duration);
     let trash_items = match list() {
         Ok(items) => items,
         Err(e) => {

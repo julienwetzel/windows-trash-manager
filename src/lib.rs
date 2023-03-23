@@ -42,7 +42,10 @@ pub struct CircularBuffer<T> {
 
 impl<T> CircularBuffer<T> {
     pub fn new(capacity: usize) -> Self {
-        assert!(capacity > 0, "La capacité doit être supérieure à zéro.");
+        assert!(
+            capacity > 0,
+            "[CircularBuffer] La capacité doit être supérieure à zéro."
+        );
         Self {
             buffer: Vec::with_capacity(capacity),
             head: 0,
@@ -53,7 +56,7 @@ impl<T> CircularBuffer<T> {
     pub fn push(&mut self, item: T) {
         assert!(
             self.buffer.capacity() > 0,
-            "Le tampon doit avoir une capacité supérieure à zéro."
+            "[CircularBuffer] Le tampon doit avoir une capacité supérieure à zéro."
         );
         if self.buffer.len() < self.buffer.capacity() {
             self.buffer.push(item);
@@ -65,11 +68,11 @@ impl<T> CircularBuffer<T> {
         }
         assert!(
             self.tail <= self.buffer.capacity(),
-            "La queue doit être inférieure ou égale à la capacité du tampon."
+            "[CircularBuffer] La queue doit être inférieure ou égale à la capacité du tampon."
         );
         assert!(
             self.head <= self.buffer.capacity(),
-            "L'indice de tête doit être inférieur ou égal à la capacité du tampon."
+            "[CircularBuffer] L'indice de tête doit être inférieur ou égal à la capacité du tampon."
         );
     }
 
@@ -80,11 +83,11 @@ impl<T> CircularBuffer<T> {
 
         assert!(
             self.head <= cap,
-            "L'indice de tête doit être inférieur ou égal à la capacité du tampon."
+            "[CircularBuffer] L'indice de tête doit être inférieur ou égal à la capacité du tampon."
         );
         assert!(
             self.tail <= cap,
-            "La queue doit être inférieure ou égale à la capacité du tampon."
+            "[CircularBuffer] La queue doit être inférieure ou égale à la capacité du tampon."
         );
 
         self.buffer
