@@ -1,25 +1,32 @@
-use crate::{CircularBuffer, GitHubInfo, NOTICE};
 use chrono::{offset::Local, Duration, NaiveDateTime, TimeZone};
 use serde::{Deserialize, Serialize};
 use trash::os_limited::{list, purge_all};
 
-impl Serialize for CircularBuffer<String> {
+use crate::{CircularBuffer, GitHubInfo, NOTICE};
+
+impl<T> Serialize for CircularBuffer<T>
+where
+    T: Serialize,
+{
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
-        let data = self.iter().collect::<Vec<&String>>();
+        let data = self.iter().collect::<Vec<&T>>();
         let capacity = self.buffer.capacity();
         (capacity, data).serialize(serializer)
     }
 }
 
-impl<'de> Deserialize<'de> for CircularBuffer<String> {
+impl<'de, T> Deserialize<'de> for CircularBuffer<T>
+where
+    T: Deserialize<'de> + Clone,
+{
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
-        let (capacity, data): (usize, Vec<String>) = Deserialize::deserialize(deserializer)?;
+        let (capacity, data): (usize, Vec<T>) = Deserialize::deserialize(deserializer)?;
         let mut buffer = CircularBuffer::new(capacity);
 
         for item in data {
@@ -37,8 +44,6 @@ pub struct ConfigApp {
     max_console_lines: u16,
 }
 
-impl ConfigApp {}
-
 impl Default for ConfigApp {
     fn default() -> Self {
         Self {
@@ -55,13 +60,13 @@ pub struct ConsoleApp {
 }
 
 impl ConsoleApp {
-    pub fn get_last_console_messages(&self, count: usize) -> Vec<String> {
+    pub fn get_last_console_messages(&self, count: usize) -> Vec<&String> {
         if self.console_queue.is_empty() {
             return Vec::new();
         }
 
         let messages = self.console_queue.iter().collect::<Vec<&String>>();
-        messages.into_iter().take(count).cloned().collect()
+        messages.into_iter().take(count).collect()
     }
 
     pub fn add_to_buffer(&mut self, text: &str) {
@@ -85,8 +90,9 @@ impl ConsoleApp {
 
 impl Default for ConsoleApp {
     fn default() -> Self {
+        let config_app = ConfigApp::default();
         Self {
-            console_queue: CircularBuffer::new(ConfigApp::default().max_console_lines.into()),
+            console_queue: CircularBuffer::new(config_app.max_console_lines.into()),
         }
     }
 }
@@ -115,7 +121,6 @@ impl TemplateApp {
             Default::default()
         };
 
-        // Ajoutez le contenu de NOTICE au buffer ici
         template_app.console_app.add_to_buffer(NOTICE);
         template_app
     }
@@ -127,8 +132,8 @@ impl eframe::App for TemplateApp {
     /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         let Self {
-            console_app,
             config_app,
+            console_app,
         } = self;
         //___________________________ TOPBOTTOMPANEL __________________________
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
@@ -247,7 +252,11 @@ impl eframe::App for TemplateApp {
                     let lines = self
                         .console_app
                         .get_last_console_messages(config_app.max_console_lines.into());
-                    let mut text = lines.join("\n");
+                    let mut text = lines
+                        .iter()
+                        .map(|s| s.as_str())
+                        .collect::<Vec<&str>>()
+                        .join("\n");
                     ui.add_sized(ui.available_size(), egui::TextEdit::multiline(&mut text));
                 });
         });
@@ -268,62 +277,71 @@ pub fn clear_cache(storage: &mut dyn eframe::Storage) {
 
 //___________________FUNCTION BUTTON SUPPRIMER_DEFINITIVEMENT__________________
 fn supprimer_definitivement(console_app: &mut ConsoleApp, config_app: &mut ConfigApp) {
-    let now = Local::now().naive_local();
-    let duration = config_app.time_threshold as i64;
-    let threshold = Duration::days(duration);
-    let trash_items = match list() {
-        Ok(items) => items,
-        Err(e) => {
-            console_app.add_to_buffer(&format!(
-                "**** Erreur lors de la récupération des éléments de la corbeille: {} ****\n",
-                e
-            ));
-            return;
-        }
-    };
+    let elements_to_process = get_elements_to_process(console_app, config_app);
 
     console_app.add_to_buffer("SUPPRESSION DÉFINITIVE\n\n");
 
-    for item in &trash_items {
-        let time_deleted = match NaiveDateTime::from_timestamp_opt(item.time_deleted, 0) {
-            Some(time) => time,
+    // Affichage des en-têtes de colonnes
+    console_app.add_to_buffer("Nom                                      | Supprimé le          \n");
+    console_app.add_to_buffer("-----------------------------------------|---------------------\n");
+
+    for item in &elements_to_process {
+        match NaiveDateTime::from_timestamp_opt(item.time_deleted, 0) {
+            Some(naive_datetime) => {
+                let time_deleted_local = Local.from_utc_datetime(&naive_datetime);
+                let formatted_time_deleted =
+                    time_deleted_local.format("%d.%m.%Y %H:%M").to_string();
+                let message = format!("{: <40}| {: <19}\n", item.name, formatted_time_deleted);
+                console_app.add_to_buffer(&message);
+            }
             None => {
                 console_app
                     .add_to_buffer("**** Erreur lors de la conversion de l'horodatage ****\n");
-                continue;
+                return;
             }
         };
-        let time_deleted_local = Local.from_utc_datetime(&time_deleted);
-
-        if now.signed_duration_since(time_deleted_local.naive_local()) > threshold {
-            let formatted_time_deleted = time_deleted_local.format("%d.%m.%Y %H:%M").to_string();
-            let message = format!(
-                "Nom : {} \n\
-                Supprimé le : {}\n\n",
-                item.name, formatted_time_deleted
-            );
-            console_app.add_to_buffer(&message);
-        }
     }
 
-    if let Err(e) = purge_all(trash_items.into_iter().filter(|item| {
-        let time_deleted = match NaiveDateTime::from_timestamp_opt(item.time_deleted, 0) {
-            Some(time) => time,
-            None => {
-                console_app
-                    .add_to_buffer("**** Erreur lors de la conversion de l'horodatage ****\n");
-                return false;
-            }
-        };
-        let time_deleted_local = Local.from_utc_datetime(&time_deleted);
-        now.signed_duration_since(time_deleted_local.naive_local()) > threshold
-    })) {
+    if let Err(e) = purge_all(elements_to_process.into_iter()) {
         console_app.add_to_buffer(&format!("**** Erreur lors de la purge: {} ****\n", e));
     }
 }
 
 //__________________________FUNCTION BUTTON ANALYSER___________________________
 fn analyser(console_app: &mut ConsoleApp, config_app: &mut ConfigApp) {
+    let elements_to_process = get_elements_to_process(console_app, config_app);
+
+    console_app.add_to_buffer("ANALYSE\n\n");
+
+    for item in &elements_to_process {
+        match NaiveDateTime::from_timestamp_opt(item.time_deleted, 0) {
+            Some(naive_datetime) => {
+                let time_deleted_local = Local.from_utc_datetime(&naive_datetime);
+                let formatted_time_deleted =
+                    time_deleted_local.format("%d.%m.%Y %H:%M").to_string();
+                let message = format!(
+                    "Nom : {} \n\
+                    Supprimé le : {}\n\n",
+                    item.name, formatted_time_deleted
+                );
+                console_app.add_to_buffer(&message);
+            }
+            None => {
+                console_app.add_to_buffer("Erreur lors de la conversion de la date.");
+                return;
+            }
+        };
+    }
+
+    let total_items = elements_to_process.len();
+    console_app.add_to_buffer(&format!("Total d'éléments à traiter : {}\n", total_items));
+}
+
+//______________________FUNCTION GET_ELEMENTS_TO_PROCESS_______________________
+fn get_elements_to_process(
+    console_app: &mut ConsoleApp,
+    config_app: &mut ConfigApp,
+) -> Vec<trash::TrashItem> {
     let now = Local::now().naive_local();
     let duration = config_app.time_threshold as i64;
     let threshold = Duration::days(duration);
@@ -334,35 +352,23 @@ fn analyser(console_app: &mut ConsoleApp, config_app: &mut ConfigApp) {
                 "**** Erreur lors de la récupération des éléments de la corbeille: {} ****\n",
                 e
             ));
-            return;
+            return vec![];
         }
     };
 
-    let title = format!(
-        "LISTE DES ELEMENTS SUPPRIMÉS IL Y A PLUS DE {} JOURS\n\n",
-        config_app.time_threshold
-    );
-    console_app.add_to_buffer(&title);
-
-    for item in &trash_items {
-        let time_deleted = match NaiveDateTime::from_timestamp_opt(item.time_deleted, 0) {
-            Some(time) => time,
-            None => {
-                console_app
-                    .add_to_buffer("**** Erreur lors de la conversion de l'horodatage ****\n");
-                continue;
-            }
-        };
-        let time_deleted_local = Local.from_utc_datetime(&time_deleted);
-
-        if now.signed_duration_since(time_deleted_local.naive_local()) > threshold {
-            let formatted_time_deleted = time_deleted_local.format("%d.%m.%Y %H:%M").to_string();
-            let message = format!(
-                "Nom : {} \n\
-                Supprimé le : {}\n\n",
-                item.name, formatted_time_deleted
-            );
-            console_app.add_to_buffer(&message);
-        }
-    }
+    trash_items
+        .into_iter()
+        .filter(|item| {
+            let time_deleted = match NaiveDateTime::from_timestamp_opt(item.time_deleted, 0) {
+                Some(time) => time,
+                None => {
+                    console_app
+                        .add_to_buffer("**** Erreur lors de la conversion de l'horodatage ****\n");
+                    return false;
+                }
+            };
+            let time_deleted_local = Local.from_utc_datetime(&time_deleted);
+            now.signed_duration_since(time_deleted_local.naive_local()) > threshold
+        })
+        .collect()
 }
