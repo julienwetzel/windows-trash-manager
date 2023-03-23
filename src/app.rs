@@ -1,7 +1,5 @@
 use crate::{CircularBuffer, GitHubInfo, NOTICE};
 use chrono::{offset::Local, Duration, NaiveDateTime, TimeZone};
-//use eframe::{egui_glow::painter::clear, Storage};
-//use egui::Memory;
 use serde::{Deserialize, Serialize};
 use trash::os_limited::{list, purge_all};
 
@@ -11,7 +9,8 @@ impl Serialize for CircularBuffer<String> {
         S: serde::Serializer,
     {
         let data = self.iter().collect::<Vec<&String>>();
-        data.serialize(serializer)
+        let capacity = self.buffer.capacity();
+        (capacity, data).serialize(serializer)
     }
 }
 
@@ -20,16 +19,13 @@ impl<'de> Deserialize<'de> for CircularBuffer<String> {
     where
         D: serde::Deserializer<'de>,
     {
-        let data = Vec::<String>::deserialize(deserializer)?;
-        let mut buffer;
-        if data.len() > 0 {
-            buffer = CircularBuffer::new(data.len());
-            for item in data {
-                buffer.push(item);
-            }
-        } else {
-            buffer = CircularBuffer::new(1);
+        let (capacity, data): (usize, Vec<String>) = Deserialize::deserialize(deserializer)?;
+        let mut buffer = CircularBuffer::new(capacity);
+
+        for item in data {
+            buffer.push(item);
         }
+
         Ok(buffer)
     }
 }
@@ -47,7 +43,7 @@ impl Default for ConfigApp {
     fn default() -> Self {
         Self {
             time_threshold: 30,
-            max_console_lines: 344,
+            max_console_lines: 1000,
         }
     }
 }
@@ -260,8 +256,9 @@ impl eframe::App for TemplateApp {
             egui::ScrollArea::vertical()
                 .stick_to_bottom(true)
                 .show(ui, |ui| {
-                    let lines = self.console_app.get_last_console_messages(1000);
-                    //.get_last_console_messages(config_app.max_console_lines.into());
+                    let lines = self
+                        .console_app
+                        .get_last_console_messages(config_app.max_console_lines.into());
                     let mut text = lines.join("\n");
                     ui.add_sized(ui.available_size(), egui::TextEdit::multiline(&mut text));
                 });

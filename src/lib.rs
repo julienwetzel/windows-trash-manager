@@ -1,5 +1,4 @@
-#![warn(clippy::all, rust_2018_idioms)]
-
+#![warn(clippy::all, rust_2021_compatibility)]
 mod app;
 pub use app::TemplateApp;
 mod consts;
@@ -66,29 +65,12 @@ impl<T> CircularBuffer<T> {
             self.head = (self.head + 1) % self.buffer.capacity();
             self.tail = (self.tail + 1) % self.buffer.capacity();
         }
-        assert!(
-            self.tail <= self.buffer.capacity(),
-            "[CircularBuffer] La queue doit être inférieure ou égale à la capacité du tampon."
-        );
-        assert!(
-            self.head <= self.buffer.capacity(),
-            "[CircularBuffer] L'indice de tête doit être inférieur ou égal à la capacité du tampon."
-        );
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &T> {
         let len = self.buffer.len();
         let cap = self.buffer.capacity();
         let tail = self.tail;
-
-        assert!(
-            self.head <= cap,
-            "[CircularBuffer] L'indice de tête doit être inférieur ou égal à la capacité du tampon."
-        );
-        assert!(
-            self.tail <= cap,
-            "[CircularBuffer] La queue doit être inférieure ou égale à la capacité du tampon."
-        );
 
         self.buffer
             .iter()
