@@ -14,25 +14,27 @@ repository = "https://github.com/julienwetzel/windows-trash-manager"
 
 [dependencies]
 # UI
-egui = "0.21.0"      # Gui Framwork
+egui = "0.21.0"       # Gui Framwork
 eframe = { version = "0.21.0", default-features = false, features = [
-    "accesskit",     # Make egui comptaible with screen readers. NOTE: adds a lot of dependencies.
-    "default_fonts", # Embed the default egui fonts.
-    "glow",          # Use the glow rendering backend. Alternative: "wgpu".
-    "persistence",   # Enable restoring app state when restarting the app.
-    "dark-light",    # Detect dark mode system preference using dark-light
+    "accesskit",      # Make egui comptaible with screen readers. NOTE: adds a lot of dependencies.
+    "default_fonts",  # Embed the default egui fonts.
+    "glow",           # Use the glow rendering backend. Alternative: "wgpu".
+    "persistence",    # Enable restoring app state when restarting the app.
+    "dark-light",     # Detect dark mode system preference using dark-light
 ] }
-dark-light = "1.0"   # Change light and dark theme easly
-chrono = "0.4"       # Print to human date and time
-image = "0.24.5"     # For manipulate images
+dark-light = "1.0"    # Change light and dark theme easly
+chrono = "0.4"        # Print to human date and time
+image = "0.24.5"      # For manipulate images
+comfy-table = "6.1.4" # An easy to use library for building beautiful tables with automatic content wrapping
 
 # Logging
 tracing-subscriber = "0.3"
 
 # Other
 serde = { version = "1", features = ["derive"] } # For persistence
-trash = "3.0.1"  # This crate provides functions that allow moving files to the operating system’s Recycle Bin or Trash, or the equivalent.
-maplit = "1.0.2" # The maplit crate uses => syntax to separate the key and value for the mapping macros.
+trash = "3.0.1"      # This crate provides functions that allow moving files to the operating system’s Recycle Bin or Trash, or the equivalent.
+maplit = "1.0.2"     # The maplit crate uses => syntax to separate the key and value for the mapping macros.
+#epi = "0.17.0"       # Backend-agnostic interface for writing apps using egui.
 
 [build-dependencies]
 winresource = "0.1.15"

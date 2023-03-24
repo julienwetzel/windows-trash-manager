@@ -3,13 +3,12 @@ mod app;
 pub use app::TemplateApp;
 mod consts;
 
-pub const NOTICE: &str =
-    "    /\\_/\\  (\n   ( ^.^ ) _)\n      \\\"/  (\n   (  |  |  ) \n(__d b__)\n\n\
+pub const NOTICE: &str = "
 📖 NOTICE D'UTILISATION 📖\n\n\
 ▶ Préserver X jours ◀\n\
   Permet de spécifier le nombre de jours durant lesquels les éléments restent \
   dans la corbeille avant d'être supprimés définitivement.\n\
-📺 Exemple: Si défini sur 5 jours, les éléments supprimés il y a plus de 5 jours \
+   Exemple: Si défini sur 5 jours, les éléments supprimés il y a plus de 5 jours \
   seront automatiquement supprimés de la corbeille.\n\
 ▶ Analyser ◀\n\
   Ce bouton permet de lister les éléments supprimés au-delà du nombre de jours \

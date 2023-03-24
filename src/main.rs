@@ -38,10 +38,12 @@ fn app_icon() -> eframe::IconData {
 fn native_options() -> eframe::NativeOptions {
     let icon = app_icon();
     let window_size = Vec2::new(800.0, 360.0);
+    let min_window_size = Vec2::new(701.0, 323.0);
     eframe::NativeOptions {
         decorated: true,
         icon_data: Some(icon),
         initial_window_size: Some(window_size),
+        min_window_size: Some(min_window_size),
         ..Default::default()
     }
 }
